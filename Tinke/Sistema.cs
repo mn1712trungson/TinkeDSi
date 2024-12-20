@@ -19,8 +19,6 @@
  */
 using System;
 using System.Collections.Generic;
-//using System.ComponentModel;
-//using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
@@ -62,10 +60,15 @@ namespace Tinke
             // The IE control of the Debug windows doesn't work in Mono
             isMono = (Type.GetType("Mono.Runtime") != null);
 
+            if (Program.curCommand != -1 && Program.curCommand != 3)
+            {
+                Console.WriteLine(this.Text);
+            }
+
             sb = new StringBuilder();
             TextWriter tw = new StringWriter(sb);
             tw.NewLine = "<br>";
-            if (!isMono)
+            if (!isMono && (Program.curCommand == -1 || Program.curCommand == 3))
                 Console.SetOut(tw);
 
             #region Language
@@ -77,7 +80,6 @@ namespace Tinke
                                  "\n    <InstantSearch>True</InstantSearch>" +
                                  "\n    <WindowDebug>True</WindowDebug>" +
                                  "\n    <WindowInformation>True</WindowInformation>" +
-                                 //"\n    <ModeWindow>False</ModeWindow>" +
                                  "\n  </Options>\n</Tinke>",
                                  Encoding.UTF8);
             }
@@ -86,13 +88,6 @@ namespace Tinke
             {
                 if (!langFile.EndsWith(".xml"))
                     continue; ;
-
-                //string flag = Application.StartupPath + Path.DirectorySeparatorChar + "langs" + Path.DirectorySeparatorChar + langFile.Substring(langFile.Length - 9, 5) + ".png";
-                //Image iFlag;
-                //if (File.Exists(flag))
-                //iFlag = Image.FromFile(flag);
-                //else
-                //iFlag = iconos.Images[1];
 
                 XElement xLang = XElement.Load(langFile);
                 if (xLang.Name != "Language")
@@ -116,8 +111,13 @@ namespace Tinke
         void Sistema_Load(object sender, EventArgs e)
         {
             string[] filesToRead = new string[1];
-            if (Environment.GetCommandLineArgs().Length == 1)
+            if (Program.curCommand == -1)
             {
+                if (!isMono && Program.bOpenDefault)
+                {
+                    Program.FreeConsole();
+                    SendKeys.SendWait("{ENTER}");
+                }
                 OpenFileDialog o = new OpenFileDialog();
                 o.CheckFileExists = true;
                 o.Multiselect = true;
@@ -130,27 +130,116 @@ namespace Tinke
                 filesToRead = o.FileNames;
                 o.Dispose();
             }
-            else if (Environment.GetCommandLineArgs().Length == 2)
+            else if (Program.curCommand == 3)
             {
-                if (Environment.GetCommandLineArgs()[1] == "-fld")
+                if (!isMono)
                 {
-                    FolderBrowserDialog o = new FolderBrowserDialog();
-                    o.ShowNewFolderButton = false;
-                    if (o.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    Program.FreeConsole();
+                    SendKeys.SendWait("{ENTER}");
+                }
+                if (Program.bIsFolder)
+                {
+                    if (string.IsNullOrWhiteSpace(Program.openDirPath))
                     {
+                        FolderBrowserDialog o = new FolderBrowserDialog();
+                        o.ShowNewFolderButton = false;
+                        if (o.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                        {
+                            Application.Exit();
+                            return;
+                        }
+                        filesToRead[0] = o.SelectedPath;
+                        o.Dispose();
+                    } else {
+                        if (Directory.Exists(Program.openDirPath))
+                            filesToRead[0] = Program.openDirPath;
+                        else
+                        {
+                            MessageBox.Show(Tools.Helper.GetTranslation("Messages", "S2E"), Tools.Helper.GetTranslation("Messages", "S01"));
+                            this.Close();
+                            Application.Exit();
+                            return;
+                        }
+                    }
+                }
+                else if (Program.tblRoms.Count() == 1)
+                {
+                    if (File.Exists(Program.tblRoms[0]))
+                        filesToRead[0] = Program.tblRoms[0];
+                    else {
+                        MessageBox.Show(Tools.Helper.GetTranslation("Messages", "S2E"), Tools.Helper.GetTranslation("Messages", "S01"));
+                        this.Close();
                         Application.Exit();
                         return;
                     }
-                    filesToRead[0] = o.SelectedPath;
-                    o.Dispose();
                 }
                 else
-                    filesToRead[0] = Environment.GetCommandLineArgs()[1];
+                {
+                    foreach (string fileName in Program.tblRoms)
+                    {
+                        if (!File.Exists(fileName))
+                        {
+                            MessageBox.Show(Tools.Helper.GetTranslation("Messages", "S2E"), Tools.Helper.GetTranslation("Messages", "S01"));
+                            this.Close();
+                            Application.Exit();
+                            return;
+                        }
+                    }
+                    filesToRead = new String[Program.tblRoms.Count()];
+                    Array.Copy(Program.tblRoms.ToArray(), 0, filesToRead, 0, filesToRead.Length);
+                }
             }
-            else if (Environment.GetCommandLineArgs().Length >= 3)
+            else if (Program.curCommand == 1)
             {
-                filesToRead = new String[Environment.GetCommandLineArgs().Length - 1];
-                Array.Copy(Environment.GetCommandLineArgs(), 1, filesToRead, 0, filesToRead.Length);
+                if (!File.Exists(Program.extractFilePath))
+                    Console.WriteLine("The input file not found!");
+                else {
+                    filesToRead[0] = Program.extractFilePath;
+                    ReadGame(filesToRead[0]);
+
+                    sFolder folderSelect = accion.Root;
+                    if (string.IsNullOrWhiteSpace(Program.extractOutputPath))
+                        Program.extractOutputPath = ".";
+                    Directory.CreateDirectory(Program.extractOutputPath + Path.DirectorySeparatorChar + folderSelect.name);
+                    RecursivoExtractFolder(folderSelect, Program.extractOutputPath + Path.DirectorySeparatorChar + folderSelect.name);
+                    Console.WriteLine("Extract all files to " + Program.extractOutputPath + Path.DirectorySeparatorChar + folderSelect.name);
+                }
+
+                if (!isMono)
+                {
+                    Program.FreeConsole();
+                    SendKeys.SendWait("{ENTER}");
+                }
+                this.Close();
+                Application.Exit();
+                return;
+            }
+            else if (Program.curCommand == 2)
+            {
+                if (!File.Exists(Program.replaceInputFile))
+                    Console.WriteLine("The input file not found!");
+                else {
+                    filesToRead[0] = Program.replaceInputFile;
+                    ReadGame(filesToRead[0]);
+
+                    string fullPath = Path.GetFullPath(Program.replaceResPath);
+                    string lastDirectoryName = Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    if (Directory.Exists(Program.replaceResPath) && string.Equals(lastDirectoryName, "root"))
+                    {
+                        ChangeByDir(Program.replaceResPath);
+                        btnSaveROM_Click(null, null);
+                    } else
+                        Console.WriteLine("The nitrofs folder not found or the folder name is not 'root'");
+                }
+
+                if (!isMono)
+                {
+                    Program.FreeConsole();
+                    SendKeys.SendWait("{ENTER}");
+                }
+                this.Close();
+                Application.Exit();
+                return;
             }
 
             Thread loadrom = new Thread(ThreadEspera)
@@ -199,7 +288,6 @@ namespace Tinke
                 xml.Element("WindowDebug").Value = toolStripDebug.Checked.ToString();
                 xml.Element("WindowInformation").Value = toolStripInfoRom.Checked.ToString();
                 xml.Element("InstantSearch").Value = checkSearch.Checked.ToString();
-                //xml.Element("ModeWindow").Value = toolStripVentana.Checked.ToString();
 
                 xml = xml.Parent;
                 xml.Save(Application.StartupPath + Path.DirectorySeparatorChar + "Tinke.xml");
@@ -1444,21 +1532,41 @@ namespace Tinke
              * Files...
             */
             bool keep_original = false;
+            bool a9_recomp = false;
+            bool a9_bestcomp = false;
+            bool bIsFlashCartFW = false;
             Nitro.Estructuras.ROMHeader header = romInfo.Cabecera;
 
-            Dialog.SaveOptions dialog = new Dialog.SaveOptions();
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-                return;
-            if (dialog.IsKeepSignature)
-                keep_original = true;
-            if (dialog.IsSafeTrim)
-                header.trimmedRom = true;
+            if (Program.curCommand == 2)
+            {
+                keep_original = Program.keepSig;
+                if (Program.safeTrim)
+                    header.trimmedRom = true;
+                a9_recomp = Program.recompressA9;
+                a9_bestcomp = Program.blzcueA9;
+            }
+            else
+            {
+                Dialog.SaveOptions dialog = new Dialog.SaveOptions();
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    return;
+                if (dialog.IsKeepSignature)
+                    keep_original = true;
+                if (dialog.IsSafeTrim)
+                    header.trimmedRom = true;
+                if (dialog.IsReCompress)
+                    a9_recomp = true;
+                if (dialog.IsBetterCompress)
+                    a9_bestcomp = true;
+                if (dialog.IsFlashCartFirmware)
+                    bIsFlashCartFW = true;
+            }
 
             Thread create = new Thread(ThreadEspera)
             {
                 IsBackground = true
             };
-            if (!isMono)
+            if (!isMono && Program.curCommand != 2)
                 create.Start("S05");
 
             // Get special files
@@ -1527,22 +1635,25 @@ namespace Tinke
             }
 
             // Calc Secure Area CRC
-            if (header.ARM9romOffset == 0x4000 && header.ARM9size >= 0x4000)
+            if (header.ARM9romOffset == 0x4000 && header.ARM9size >= 0x4000 && !bIsFlashCartFW)
             {
                 Array.Copy(arm9Data, 0x800, this.secureArea.EncryptedData, 0x800, 0x3800);
                 header.secureCRC16 = SecureArea.CalcCRC(this.secureArea.EncryptedData, gameCode);
             }
 
-            bool cmparm9 = true;
+            uint cmparm9 = 0;
             if (!ov9Sha1Hmac_updated)
             {
                 uint initptr = BitConverter.ToUInt32(header.reserved2, 0) & 0x3FFF;
                 uint hdrptr = BitConverter.ToUInt32(arm9Data, (int)initptr + 0x14) - header.ARM9ramAddress;
                 byte[] arm9Data_dec;
                 cmparm9 = ARM9BLZ.Decompress(arm9Data, header, out arm9Data_dec);
-                if (!cmparm9)
+                if (cmparm9 == 0 && a9_recomp)
                 {
-                    arm9Data = ARM9BLZ.Compress(arm9Data_dec, header, 0);
+                    arm9Data = ARM9BLZ.Compress(arm9Data, header, 0, a9_bestcomp);
+                } else if (cmparm9 == 1 && a9_recomp)
+                {
+                    arm9Data = ARM9BLZ.Compress(arm9Data_dec, header, 0, a9_bestcomp);
                 }
             }
 
@@ -1551,7 +1662,7 @@ namespace Tinke
             bw.Flush();
             br.Close();
 
-            if (!ov9Sha1Hmac_updated && !cmparm9)
+            if (!ov9Sha1Hmac_updated && a9_recomp)
             {
                 arm9.path = arm9Binary;
                 arm9.offset = 0;
@@ -1627,7 +1738,6 @@ namespace Tinke
 
             Console.WriteLine(Tools.Helper.GetTranslation("Messages", "S09"), new FileInfo(arm9Binary).Length);
 
-
             // Escribismo el ARM7 Binary
             string arm7Binary = Path.GetTempFileName();
             string overlays7 = Path.GetTempFileName();
@@ -1690,7 +1800,6 @@ namespace Tinke
             bw.Close();
             Console.WriteLine(Tools.Helper.GetTranslation("Messages", "S09"), new FileInfo(arm7Binary).Length);
 
-
             // Escribimos el FNT (File Name Table)
             string fileFNT = Path.GetTempFileName();
             Console.Write("\tFile Name Table (FNT)...");
@@ -1723,14 +1832,15 @@ namespace Tinke
             // Escribimos el banner
             string banner = Path.GetTempFileName();
             header.banner_size = Nitro.NDS.EscribirBanner(banner, romInfo.Banner);
-            
+
             // Escribimos el FAT (File Allocation Table)
             string fileFAT = Path.GetTempFileName();
             header.FAToffset = currPos;
             Nitro.FAT.Write(fileFAT, accion.Root, header.FAToffset, accion.SortedIDs, arm9overlayOffset, arm7overlayOffset, header);
             currPos += (uint)new FileInfo(fileFAT).Length;
 
-            header.bannerOffset = currPos;
+            if (!bIsFlashCartFW)
+                header.bannerOffset = currPos;
             currPos += (uint)new FileInfo(banner).Length;
 
             // Escribimos los archivos
@@ -1739,7 +1849,8 @@ namespace Tinke
             currPos += (uint)new FileInfo(files).Length;
 
             // Update the ROM size values of the header
-            header.ROMsize = currPos;
+            if (!bIsFlashCartFW)
+                header.ROMsize = currPos;
 
             // Update DSi staff header info
             if (this.twl != null && (header.unitCode & 2) > 0)
@@ -1836,10 +1947,13 @@ namespace Tinke
                 hmac.Dispose();
             }
 
-            header.tamaño = (uint)Math.Ceiling(Math.Log(currPos, 2));
-            // Ref. to TWL SDK' "Card Manual" for DSi Cartrige ROMs
-            if ((header.unitCode & 2) > 0 && (header.tid_high & 0xF) == 0 && header.tamaño < 25) header.tamaño = 25; 
-            header.tamaño = (uint)Math.Pow(2, header.tamaño);
+            if (!bIsFlashCartFW)
+            {
+                header.tamaño = (uint)Math.Ceiling(Math.Log(currPos, 2));
+                // Ref. to TWL SDK' "Card Manual" for DSi Cartrige ROMs
+                if ((header.unitCode & 2) > 0 && (header.tid_high & 0xF) == 0 && header.tamaño < 25) header.tamaño = 25;
+                header.tamaño = (uint)Math.Pow(2, header.tamaño);
+            }
 
             // Get Header CRC
             string tempHeader = Path.GetTempFileName();
@@ -1856,29 +1970,27 @@ namespace Tinke
             Console.Write("<br>");
             #endregion
 
-            if (!isMono)
+            if (!isMono && Program.curCommand != 2)
                 CloseEspera(create);
 
             // Obtenemos el nuevo archivo para guardar
             SaveFileDialog o = new SaveFileDialog();
-            o.AddExtension = true;
-            o.DefaultExt = ".nds";
-            o.Filter = "Nintendo DS ROM (*.nds)|*.nds";
-            o.OverwritePrompt = true;
-            Open_Dialog:
-            if (o.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (Program.curCommand == 2)
+                o.FileName = Program.replaceOutputFile;
+            else
             {
-                if (o.FileName == accion.ROMFile)
-                {
-                    MessageBox.Show(Tools.Helper.GetTranslation("Sistema", "S44"));
-                    goto Open_Dialog;
-                }
-
+                o.AddExtension = true;
+                o.DefaultExt = ".nds";
+                o.Filter = "Nintendo DS ROM (*.nds)|*.nds";
+                o.OverwritePrompt = true;
+            }
+            if (Program.curCommand == 2 || o.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
                 Thread saverom = new Thread(ThreadEspera)
                 {
                     IsBackground = true
                 };
-                if (!isMono)
+                if (!isMono && Program.curCommand != 2)
                     saverom.Start("S06");
 
                 Console.WriteLine(Tools.Helper.GetTranslation("Messages", "S0D"), o.FileName);
@@ -1914,14 +2026,14 @@ namespace Tinke
                 Console.WriteLine("<b>" + Tools.Helper.GetTranslation("Messages", "S09") + "</b>", new FileInfo(o.FileName).Length);
                 accion.IsNewRom = false;
 
-                if (!isMono)
+                if (!isMono && Program.curCommand != 2)
                 {
                     CloseEspera(saverom);
                     debug.Add_Text(sb.ToString());
                 }
                 sb.Length = 0;
             }
-            
+
             // Borramos archivos ya innecesarios
             File.Delete(header_file);
             File.Delete(arm9Binary);
@@ -1932,10 +2044,6 @@ namespace Tinke
             File.Delete(fileFAT);
             File.Delete(banner);
             File.Delete(files);
-
-            //if (!isMono)
-                //debug.Add_Text(sb.ToString());
-            //sb.Length = 0;
         }
         private void btnImport_Click(object sender, EventArgs e)
         {
@@ -2249,11 +2357,7 @@ namespace Tinke
 
             if (!isMono)
             {
-                try
-                {
-                    espera.Close();
-                }
-                catch { };
+                CloseEspera(wait);
                 debug.Add_Text(sb.ToString());
             }
             sb.Length = 0;
@@ -2502,30 +2606,10 @@ namespace Tinke
                 btnDesplazar.Text = ">>>>>";
             }
         }
-        private void btnImport1_Click(object sender, EventArgs e)
+        private void ChangeByDir(string files_path)
         {
-            Thread matching = new Thread(ThreadEspera)
-            {
-                IsBackground = true
-            };
-            if (!isMono)
-                matching.Start("S08");
-
-            FolderBrowserDialog FBD = new FolderBrowserDialog
-            {
-                Description = Tools.Helper.GetTranslation("Sistema", "S47"),
-                ShowNewFolderButton = false
-            };
-            if (FBD.ShowDialog() != DialogResult.OK)
-            {
-                if (!isMono)
-                    CloseEspera(matching);
-                return;
-            }
-
-            Console.WriteLine(FBD.SelectedPath);
             List<string> files = new List<string>();
-            files = GetAllSubFiles(FBD.SelectedPath, files);
+            files = GetAllSubFiles(files_path, files);
             foreach (string currFile in files)
             {
                 string nstr;
@@ -2569,12 +2653,32 @@ namespace Tinke
                 accion.Change_File(fileToBeChanged.id, currFile);
                 Console.WriteLine(currFile);
             }
+        }
+        private void btnImport1_Click(object sender, EventArgs e)
+        {
+            Thread matching = new Thread(ThreadEspera)
+            {
+                IsBackground = true
+            };
             if (!isMono)
-                try
-                {
-                    espera.Close();
-                }
-                catch { };
+                matching.Start("S08");
+
+            FolderBrowserDialog FBD = new FolderBrowserDialog
+            {
+                Description = Tools.Helper.GetTranslation("Sistema", "S47"),
+                ShowNewFolderButton = false
+            };
+            if (FBD.ShowDialog() != DialogResult.OK)
+            {
+                if (!isMono)
+                    CloseEspera(matching);
+                return;
+            }
+
+            Console.WriteLine(FBD.SelectedPath);
+            ChangeByDir(FBD.SelectedPath);
+            if (!isMono)
+                CloseEspera(matching);
         }
         public static List<string> GetAllSubFiles(string directoryPath, List<string> files)
         {
@@ -2615,7 +2719,12 @@ namespace Tinke
             {
                 foreach (string item in filePaths)
                 {
-                    inFile = String.Format("\"{0}\"", item);
+                    FileAttributes attr = File.GetAttributes(item);
+                    if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
+                        inFile = "open -f -d";
+                    else
+                        inFile = "open ";
+                    inFile += String.Format("\"{0}\"", item);
                     System.Diagnostics.Process.Start(Application.ExecutablePath, inFile);
                 }
             }

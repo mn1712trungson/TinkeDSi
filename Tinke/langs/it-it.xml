@@ -261,6 +261,7 @@
     <S2B>The DSi Banner is good!</S2B>
     <S2C>The DSi Banner is incomplete or corrupted.</S2C>
     <S2D>The donor iheader mismatch!</S2D>
+    <S2E>File(s) not found!</S2E>
   </Messages>
   <DSDecmp>
     <!-- LZ10 -->
@@ -424,6 +425,9 @@
     <S1C>Cancella</S1C>
     <S1E>Safe Trim</S1E>
     <S1F>Keep Original RSA SHA1 Signature</S1F>
+    <S20>Recompress ARM9 binary (BLZ)</S20>
+    <S21>Better compress method (BLZ-Cue)</S21>
+    <S22>Is FlashCart Firmware</S22>
   </Dialog>
   <VisorHex>
     <S00>File</S00>
